@@ -161,4 +161,48 @@ describe FastJsonapi::ObjectSerializer do
       end
     end
   end
+
+  describe '#link' do
+    subject(:serializable_hash) { MovieSerializer.new(movie).serializable_hash }
+    before(:each) do
+    end
+
+    after do
+      MovieSerializer.data_links = {}
+    end
+
+    context 'with block' do
+      before do
+        MovieSerializer.link(:self) { "http://movies.com/#{movie.id}" }
+      end
+      let(:url) { "http://movies.com/#{movie.id}" }
+
+      it 'returns correct hash when serializable_hash is called' do
+        expect(serializable_hash[:data][:links][:self]).to eq url
+      end
+    end
+
+    context 'with block and param' do
+      before do
+        MovieSerializer.link(:public_url) do |movie_object|
+          "http://movies.com/#{movie_object.id}"
+        end
+      end
+      let(:url) { "http://movies.com/#{movie.id}" }
+
+      it 'returns correct hash when serializable_hash is called' do
+        expect(serializable_hash[:data][:links][:public_url]).to eq url
+      end
+    end
+
+    context 'with method' do
+      before do
+        MovieSerializer.link(:object_id, :id)
+      end
+
+      it 'returns correct hash when serializable_hash is called' do
+        expect(serializable_hash[:data][:links][:object_id]).to eq movie.id
+      end
+    end
+  end
 end

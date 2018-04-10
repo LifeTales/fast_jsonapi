@@ -73,6 +73,7 @@ module FastJsonapi
       @meta = options[:meta]
       @links = options[:links]
       @scope = options[:scope]
+      @data_links = {}
 
       if options[:include].present?
         @includes = options[:include].delete_if(&:blank?).map(&:to_sym)
@@ -141,6 +142,7 @@ module FastJsonapi
       def cache_options(cache_options)
         self.cached = cache_options[:enabled] || false
         self.cache_length = cache_options[:cache_length] || 5.minutes
+        self.race_condition_ttl = cache_options[:race_condition_ttl] || 5.seconds
       end
 
       def attributes(*attributes_list, &block)
@@ -255,6 +257,11 @@ module FastJsonapi
           klass = nested_relationship_to_serialize[:serializer].to_s.constantize
         end
         klass
+      end
+
+      def link(name, value = nil, &block)
+        self.data_links = {} unless data_links
+        self.data_links[name] = block || value
       end
     end
   end
