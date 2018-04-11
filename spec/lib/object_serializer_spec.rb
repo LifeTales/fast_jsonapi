@@ -181,4 +181,23 @@ describe FastJsonapi::ObjectSerializer do
       expect(V1::BlahSerializer.record_type).to be :blah
     end
   end
+
+  context 'when serializing included, serialize any links' do
+    before do
+      ActorSerializer.link(:self) do |actor_object|
+        actor_url(actor_object)
+      end
+    end
+    subject(:serializable_hash) do
+      options = {}
+      options[:include] = [:actors]
+      MovieSerializer.new(movie, options).serializable_hash
+    end
+    let(:actor) { movie.actors.first }
+    let(:url) { "http://movies.com/actors/#{actor.id}" }
+
+    it 'returns correct hash when serializable_hash is called' do
+      expect(serializable_hash[:included][0][:links][:self]).to eq url
+    end
+  end
 end

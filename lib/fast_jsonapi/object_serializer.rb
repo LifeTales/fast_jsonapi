@@ -38,8 +38,8 @@ module FastJsonapi
 
       return serializable_hash unless @resource
 
-      serializable_hash[:data] = self.class.record_hash(@resource, @scope)
-      serializable_hash[:included] = self.class.get_included_records(@resource, @includes, @known_included_objects) if @includes.present?
+      serializable_hash[:data] = self.class.record_hash(@resource, @scope, self)
+      serializable_hash[:included] = self.class.get_included_records(@resource, @includes, @known_included_objects, self) if @includes.present?
       serializable_hash
     end
 
@@ -49,8 +49,8 @@ module FastJsonapi
       data = []
       included = []
       @resource.each do |record|
-        data << self.class.record_hash(record, @scope)
-        included.concat self.class.get_included_records(record, @includes, @known_included_objects) if @includes.present?
+        data << self.class.record_hash(record, @scope, self)
+        included.concat self.class.get_included_records(record, @includes, @known_included_objects, self) if @includes.present?
       end
 
       serializable_hash[:data] = data
@@ -242,7 +242,7 @@ module FastJsonapi
 
       def get_serializer(item)
         unless item.to_s.include?('.')
-          raise ArgumentError, "#{item} is not specified as a relationship on the serializer" unless self.relationships_to_serialize[item]
+          raise ArgumentError, "#{item} is not specified as a relationship on the serializer #{self.class}" unless self.relationships_to_serialize[item]
           return self.relationships_to_serialize[item][:serializer].to_s.constantize
         end
 

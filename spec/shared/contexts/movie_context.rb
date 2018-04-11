@@ -79,6 +79,10 @@ RSpec.shared_context 'movie class' do
       has_many :actors
       belongs_to :owner, record_type: :user
       belongs_to :movie_type
+
+      def movie_url(movie)
+        "http://movies.com/#{movie.id}"
+      end
     end
 
     class MovieWithoutIdStructSerializer
@@ -113,6 +117,10 @@ RSpec.shared_context 'movie class' do
       set_type :actor
       attributes :name, :email
       belongs_to :agency
+
+      def actor_url(actor)
+        "http://movies.com/actors/#{actor.id}"
+      end
     end
 
     class MovieTypeSerializer
