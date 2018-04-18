@@ -35,10 +35,12 @@ module FastJsonapi
         id_hash(ids, record_type) # ids variable is just a single id here
       end
 
+      def get_record_type(record)
+        record.respond_to?(:type) ? record.type.downcase.pluralize.to_sym : record.class.name.underscore.to_sym
+      end
+
       def id_hash_from_record(record, record_types)
-        # memoize the record type within the record_types dictionary, then assigning to record_type:
-        record_type = record_types[record.class] ||= record.class.name.underscore.to_sym
-        { id: record.id.to_s, type: record_type }
+        { id: record.id.to_s, type: get_record_type(record) }
       end
 
       def ids_hash_from_record_and_relationship(record, relationship)
@@ -85,7 +87,7 @@ module FastJsonapi
       def record_hash(record, serializer_instance)
         if cached
           record_hash = Rails.cache.fetch(record.cache_key, expires_in: cache_length, race_condition_ttl: race_condition_ttl) do
-            temp_hash = id_hash(id_from_record(record), record_type) || { id: nil, type: record_type }
+            temp_hash = id_hash(id_from_record(record), get_record_type(record)) || { id: nil, type: get_record_type(record) }
             temp_hash[:attributes] = attributes_hash(record) if attributes_to_serialize.present?
             temp_hash[:relationships] = {}
             temp_hash[:relationships] = relationships_hash(record, cachable_relationships_to_serialize) if cachable_relationships_to_serialize.present?
