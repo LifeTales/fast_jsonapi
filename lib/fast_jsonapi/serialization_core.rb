@@ -35,12 +35,16 @@ module FastJsonapi
         id_hash(ids, record_type) # ids variable is just a single id here
       end
 
-      def get_record_type(record)
-        record.respond_to?(:type) ? record.type.downcase.pluralize.to_sym : record.class.name.underscore.to_sym
+      def get_record_type(record, record_types = nil)
+        _rt = record_types[record.class] if record_types
+        _rt = record_type unless _rt
+
+        get_record_type = record.respond_to?(:type) ? run_key_transform(record.type.downcase.pluralize.underscore.to_sym) : _rt
+        get_record_type
       end
 
       def id_hash_from_record(record, record_types)
-        { id: record.id.to_s, type: get_record_type(record) }
+        { id: record.id.to_s, type: get_record_type(record, record_types) }
       end
 
       def ids_hash_from_record_and_relationship(record, relationship)
@@ -87,7 +91,8 @@ module FastJsonapi
       def record_hash(record, serializer_instance)
         if cached
           record_hash = Rails.cache.fetch(record.cache_key, expires_in: cache_length, race_condition_ttl: race_condition_ttl) do
-            temp_hash = id_hash(id_from_record(record), get_record_type(record)) || { id: nil, type: get_record_type(record) }
+            _rt = get_record_type(record)
+            temp_hash = id_hash(id_from_record(record), _rt) || { id: nil, type: _rt }
             temp_hash[:attributes] = attributes_hash(record) if attributes_to_serialize.present?
             temp_hash[:relationships] = {}
             temp_hash[:relationships] = relationships_hash(record, cachable_relationships_to_serialize) if cachable_relationships_to_serialize.present?
@@ -100,7 +105,8 @@ module FastJsonapi
           record_hash[:relationships] = record_hash[:relationships].merge(relationships_hash(record, uncachable_relationships_to_serialize)) if uncachable_relationships_to_serialize.present?
           record_hash
         else
-          record_hash = id_hash(id_from_record(record), record_type) || { id: nil, type: record_type }
+          _rt = get_record_type(record)
+          record_hash = id_hash(id_from_record(record), _rt) || { id: nil, type: _rt }
           record_hash[:attributes] = attributes_hash(record) if attributes_to_serialize.present?
           record_hash[:relationships] = relationships_hash(record) if relationships_to_serialize.present?
           if @data_links.present?
