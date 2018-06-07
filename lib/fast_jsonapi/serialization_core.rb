@@ -147,7 +147,6 @@ module FastJsonapi
           items = parse_include_item(include_item)
           items.each do |item|
             next unless relationships_to_serialize && relationships_to_serialize[item]
-            raise NotImplementedError if @relationships_to_serialize[item][:polymorphic].is_a?(Hash)
             record_type = @relationships_to_serialize[item][:record_type]
             serializer = @relationships_to_serialize[item][:serializer].to_s.constantize
             relationship_type = @relationships_to_serialize[item][:relationship_type]
@@ -157,12 +156,16 @@ module FastJsonapi
             included_objects = [included_objects] unless relationship_type == :has_many
 
             included_objects.each do |inc_obj|
+              if @relationships_to_serialize[item][:polymorphic].is_a?(Hash)
+                serializer = self.compute_serializer_name(inc_obj.class.name.underscore.to_sym).to_s.constantize
+              end
+
               if remaining_items(items)
                 serializer_records = serializer.get_included_records(inc_obj, remaining_items(items), known_included_objects)
                 included_records.concat(serializer_records) unless serializer_records.empty?
               end
 
-              code = "#{record_type}_#{inc_obj.id}"
+              code = "#{record_type}_#{inc_obj.class.to_s}_#{inc_obj.id}"
               next if known_included_objects.key?(code)
 
               known_included_objects[code] = inc_obj
