@@ -158,6 +158,32 @@ describe FastJsonapi::ObjectSerializer do
     end
   end
 
+  context 'id attribute is the same for actors and not a primary key' do
+    before do
+      ActorSerializer.set_id :email
+      movie.actor_ids = [0, 0, 0]
+      class << movie
+        def actors
+          super.each_with_index { |actor, i| actor.email = "actor#{i}@email.com" }
+        end
+      end
+    end
+
+    after { ActorSerializer.set_id nil }
+
+    let(:options) { { include: ['actors'] } }
+    subject { MovieSerializer.new(movie, options).serializable_hash }
+
+    it 'returns all actors in includes' do
+
+      expect(
+        subject[:included].select { |i| i[:type] == :actor }.map { |i| i[:id] }
+      ).to eq(
+        movie.actors.map(&:email)
+      )
+    end
+  end
+
   context 'nested includes' do
     it 'has_many to belongs_to: returns correct nested includes when serializable_hash is called' do
       # 3 actors, 3 agencies
@@ -251,6 +277,26 @@ describe FastJsonapi::ObjectSerializer do
         expect(movies_serialized).to include(movie.id)
       end
     end
+
+    it 'polymorphic has_many: returns correct nested includes when serializable_hash is called' do
+      options = {}
+      options[:include] = [:groupees]
+
+      serializable_hash = GroupSerializer.new([group], options).serializable_hash
+
+      persons_serialized = serializable_hash[:included].find_all { |included| included[:type] == :person }.map { |included| included[:id].to_i }
+      groups_serialized = serializable_hash[:included].find_all { |included| included[:type] == :group }.map { |included| included[:id].to_i }
+
+      persons = group.groupees.find_all { |groupee| groupee.is_a?(Person) }
+      persons.each do |person|
+        expect(persons_serialized).to include(person.id)
+      end
+
+      groups = group.groupees.find_all { |groupee| groupee.is_a?(Group) }
+      groups.each do |group|
+        expect(groups_serialized).to include(group.id)
+      end
+    end
   end
 
   context 'when testing included do block of object serializer' do
@@ -301,6 +347,23 @@ describe FastJsonapi::ObjectSerializer do
 
     it 'returns correct hash when serializable_hash is called' do
       expect(serializable_hash[:included][0][:links][:self]).to eq url
+    end
+  end
+
+  context 'when serializing included, params should be available in any serializer' do
+    subject(:serializable_hash) do
+      options = {}
+      options[:include] = [:"actors.awards"]
+      options[:params] = { include_award_year: true }
+      MovieSerializer.new(movie, options).serializable_hash
+    end
+    let(:actor) { movie.actors.first }
+    let(:award) { actor.awards.first }
+    let(:year) { award.year }
+
+    it 'passes params to deeply nested includes' do
+      expect(year).to_not be_blank
+      expect(serializable_hash[:included][0][:attributes][:year]).to eq year
     end
   end
 
@@ -439,6 +502,12 @@ describe FastJsonapi::ObjectSerializer do
         options[:include] = [:owner]
         expect(serializable_hash['included']).to be_blank
       end
+    end
+  end
+
+  context 'when attribute contents are determined by params data' do
+    it 'does not throw an error with no params are passed' do
+      expect { MovieOptionalAttributeContentsWithParamsSerializer.new(movie).serialized_json }.not_to raise_error
     end
   end
 end

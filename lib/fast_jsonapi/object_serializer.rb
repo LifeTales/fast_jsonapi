@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
-require 'active_support/core_ext/object'
+require 'active_support/time'
+require 'active_support/json'
 require 'active_support/concern'
 require 'active_support/inflector'
+require 'active_support/core_ext/numeric/time'
 require 'fast_jsonapi/attribute'
 require 'fast_jsonapi/relationship'
 require 'fast_jsonapi/link'
@@ -65,13 +67,14 @@ module FastJsonapi
     end
 
     def serialized_json
-      self.class.to_json(serializable_hash)
+      ActiveSupport::JSON.encode(serializable_hash)
     end
 
     private
 
     def process_options(options)
       @fieldsets = deep_symbolize(options[:fields].presence || {})
+      @params = {}
 
       return if options.blank?
 
@@ -117,9 +120,10 @@ module FastJsonapi
         subclass.transform_method = transform_method
         subclass.cache_length = cache_length
         subclass.race_condition_ttl = race_condition_ttl
-        subclass.data_links = data_links
+        subclass.data_links = data_links.dup if data_links.present?
         subclass.cached = cached
         subclass.set_type(subclass.reflected_record_type) if subclass.reflected_record_type
+        subclass.meta_to_serialize = meta_to_serialize
       end
 
       def reflected_record_type
@@ -142,7 +146,11 @@ module FastJsonapi
         self.transform_method = mapping[transform_name.to_sym]
 
         # ensure that the record type is correctly transformed
-        set_type(reflected_record_type) if reflected_record_type
+        if record_type
+          set_type(record_type)
+        elsif reflected_record_type
+          set_type(reflected_record_type)
+        end
       end
 
       def run_key_transform(input)
@@ -162,8 +170,8 @@ module FastJsonapi
         self.record_type = run_key_transform(type_name)
       end
 
-      def set_id(id_name)
-        self.record_id = id_name
+      def set_id(id_name = nil, &block)
+        self.record_id = block || id_name
       end
 
       def cache_options(cache_options)
@@ -194,7 +202,7 @@ module FastJsonapi
         self.relationships_to_serialize = {} if relationships_to_serialize.nil?
         self.cachable_relationships_to_serialize = {} if cachable_relationships_to_serialize.nil?
         self.uncachable_relationships_to_serialize = {} if uncachable_relationships_to_serialize.nil?
-        
+
         if !relationship.cached
           self.uncachable_relationships_to_serialize[relationship.name] = relationship
         else
@@ -218,6 +226,10 @@ module FastJsonapi
         add_relationship(relationship)
       end
 
+      def meta(&block)
+        self.meta_to_serialize = block
+      end
+
       def create_relationship(base_key, relationship_type, options, block)
         name = base_key.to_sym
         if relationship_type == :has_many
@@ -232,7 +244,11 @@ module FastJsonapi
         Relationship.new(
           key: options[:key] || run_key_transform(base_key),
           name: name,
-          id_method_name: options[:id_method_name] || "#{base_serialization_key}#{id_postfix}".to_sym,
+          id_method_name: compute_id_method_name(
+            options[:id_method_name],
+            "#{base_serialization_key}#{id_postfix}".to_sym,
+            block
+          ),
           record_type: options[:record_type] || run_key_transform(base_key_sym),
           object_method_name: options[:object_method_name] || name,
           object_block: block,
@@ -240,8 +256,19 @@ module FastJsonapi
           relationship_type: relationship_type,
           cached: options[:cached],
           polymorphic: fetch_polymorphic_option(options),
-          conditional_proc: options[:if]
+          conditional_proc: options[:if],
+          transform_method: @transform_method,
+          links: options[:links],
+          lazy_load_data: options[:lazy_load_data]
         )
+      end
+
+      def compute_id_method_name(custom_id_method_name, id_method_name_from_relationship, block)
+        if block.present?
+          custom_id_method_name || :id
+        else
+          custom_id_method_name || id_method_name_from_relationship
+        end
       end
 
       def compute_serializer_name(serializer_key)
@@ -275,9 +302,10 @@ module FastJsonapi
         includes.detect do |include_item|
           klass = self
           parse_include_item(include_item).each do |parsed_include|
-            relationship_to_include = klass.relationships_to_serialize[parsed_include]
+            relationships_to_serialize = klass.relationships_to_serialize || {}
+            relationship_to_include = relationships_to_serialize[parsed_include]
             raise ArgumentError, "#{parsed_include} is not specified as a relationship on #{klass.name}" unless relationship_to_include
-            klass = relationship_to_include.serializer.to_s.constantize
+            klass = relationship_to_include.serializer.to_s.constantize unless relationship_to_include.polymorphic.is_a?(Hash)
           end
         end
       end
